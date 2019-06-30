@@ -1,6 +1,6 @@
 //! Module with all structs & functions charged of writing .dbf file content
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{BufWriter, Write, Seek, SeekFrom};
 use std::path::Path;
 
 use byteorder::WriteBytesExt;
@@ -9,6 +9,7 @@ use {Error, Record};
 use header::Header;
 use reading::TERMINATOR_VALUE;
 use record::RecordFieldInfo;
+use ::{DBaseRecord, FieldValue};
 
 /// A dbase file ends with this byte
 const FILE_TERMINATOR: u8 = 0x1A;
@@ -64,7 +65,7 @@ impl<T: Write> Writer<T> {
             }
 
             fields_info.push(
-                RecordFieldInfo::new(field_name.to_owned(), field_value.field_type(), field_length as u8)
+                RecordFieldInfo::with_length(field_name.to_owned(), field_value.field_type(), field_length as u8)
             );
         }
 
@@ -104,6 +105,81 @@ impl<T: Write> Writer<T> {
                 let bytes_to_pad = record_info.field_length - bytes_written;
                 self.dest.write_all(&value_buffer[0..bytes_to_pad as usize])?;
             }
+        }
+        self.dest.write_u8(FILE_TERMINATOR)?;
+        Ok(self.dest)
+    }
+}
+
+
+impl<T: Write + Seek> Writer<T> {
+    pub fn write_records<R: DBaseRecord>(mut self, records: Vec<R>) -> Result<T, Error> {
+        if records.is_empty() {
+            return Ok(self.dest);
+        }
+
+        let mut fields_infos = R::fields_info()
+            .into_iter()
+            .map(|(name, field_type)| RecordFieldInfo::new(name, field_type))
+            .collect::<Vec<RecordFieldInfo>>();
+        // Get the max field length for each records & fields
+        let mut fields_sizes = vec![0u8; fields_infos.len()];
+        for record in &records {
+            record.fields_length(&mut fields_sizes);
+            fields_infos.iter_mut()
+                .zip(&fields_sizes)
+                .for_each(|(info, size)| {
+                    info.field_length = info.field_length.max(*size);
+
+                });
+        }
+
+        let offset_to_first_record =
+            Header::SIZE + (fields_infos.len() * RecordFieldInfo::SIZE) + std::mem::size_of::<u8>();
+        let size_of_record = fields_infos
+            .iter()
+            .fold(0u16, |s, ref info| s + info.field_length as u16);
+        let mut header = Header::new(
+            records.len() as u32,
+            offset_to_first_record as u16,
+            size_of_record
+        );
+        header.write_to(&mut self.dest)?;
+        for record_info in &fields_infos {
+            record_info.write_to(&mut self.dest)?;
+        }
+        self.dest.write_u8(TERMINATOR_VALUE);
+
+
+        let mut fields_values = (0..fields_infos.len())
+            .map(|_i|FieldValue::Numeric(0.0))
+            .collect::<Vec<FieldValue>>();
+
+        let value_buffer = [' ' as u8; std::u8::MAX as usize];
+        for record in records {
+            record.fields_values(&mut fields_values);
+            self.dest.write_u8(' ' as u8)?; // DeletionFlag
+            for (field_value, record_info) in fields_values.iter().zip(fields_infos.iter_mut()) {
+                if field_value.field_type() != record_info.field_type {
+                    //TODO make an Error
+                    panic!("Field Value type given {:?} does not match expected field type {:?}",
+                        field_value.field_type(), record_info.field_type
+                    );
+                }
+
+                let bytes_written = field_value.write_to(&mut self.dest)?;
+                if bytes_written > std::u8::MAX as usize{
+                    panic!("FieldValue was too long");
+                }
+                if bytes_written > record_info.field_length as usize {
+                    panic!("record length was miscalculated");
+                }
+
+                let bytes_to_pad = record_info.field_length - bytes_written as u8;
+                if bytes_to_pad > 0 {
+                    self.dest.write_all(&value_buffer[0..bytes_to_pad as usize])?;
+                }
+              }
         }
         self.dest.write_u8(FILE_TERMINATOR)?;
         Ok(self.dest)

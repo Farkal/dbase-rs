@@ -7,9 +7,27 @@ use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use record::RecordFieldInfo;
 use Error;
 
+// TODO maybe bettger to return usize to handle size bigger than u_::MAX
+// with an error message later
+pub trait SizeableField {
+    fn dbase_size_of(&self) -> u8;
+}
+
+
+impl SizeableField for String {
+    fn dbase_size_of(&self) -> u8 {
+        self.as_bytes().len() as u8
+    }
+}
+
+impl SizeableField for f64 {
+    fn dbase_size_of(&self) -> u8 {
+        self.to_string().len() as u8
+    }
+}
 
 #[allow(dead_code)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum FieldType {
     Character = 'C' as isize,
     Currency,

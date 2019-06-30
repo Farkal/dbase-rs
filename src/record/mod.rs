@@ -50,7 +50,11 @@ pub struct RecordFieldInfo {
 impl RecordFieldInfo {
     pub(crate) const SIZE: usize = 32;
 
-    pub(crate) fn new(name: String, field_type: FieldType, length: u8) -> Self {
+    pub fn new(name: String, field_type: FieldType) -> Self {
+        Self::with_length(name, field_type, 0)
+    }
+
+    pub(crate) fn with_length(name: String, field_type: FieldType, length: u8) -> Self {
         Self {
             name,
             field_type,

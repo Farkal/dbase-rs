@@ -4,7 +4,7 @@ extern crate dbase;
 
 use std::collections::HashMap;
 use std::io::{Cursor, Seek, SeekFrom};
-use dbase::{DBaseRecord, FieldValue, Error, FieldValueReader};
+use dbase::{DBaseRecord, FieldValue, FieldType, Error, FieldValueReader, SizeableField};
 
 
 #[test]
@@ -37,12 +37,13 @@ fn test_read_write_simple_file() {
 }
 
 
-struct ArtistRecord {
+struct AlbumRecord {
     name: String,
+    artist: String,
 }
 
 
-impl DBaseRecord for ArtistRecord {
+impl DBaseRecord for AlbumRecord {
     fn from_field_reader<T: FieldValueReader>(r: &mut T) -> Result<Self, Error> {
         let name = match r.read_next_value() {
             Some(Ok(FieldValue::Character(value))) => value,
@@ -50,16 +51,34 @@ impl DBaseRecord for ArtistRecord {
             Some(Err(e)) => return Err(e),
             None => panic!("not enough members")
         };
-/*
-        let age = match r.read_next_value() {
-            Some(Ok(FieldValue::Numeric(value))) => value,
+
+
+        let artist = match r.read_next_value() {
+            Some(Ok(FieldValue::Character(value))) => value,
             Some(Ok(_)) => panic!("value mismatch"),
             Some(Err(e)) => return Err(e),
             None => panic!("not enough members")
-        };*/
+        };
 
 
-        Ok(Self {name})
+        Ok(Self {name, artist})
+    }
+
+    fn fields_info() -> Vec<(String, FieldType)> {
+        vec![
+            ("name".to_owned(), FieldType::Character),
+            ("artist".to_owned(), FieldType::Character),
+        ]
+    }
+
+    fn fields_length(&self, fields_length: &mut [u8]) {
+        fields_length[0] = self.name.dbase_size_of();
+        fields_length[1] = self.artist.dbase_size_of();
+    }
+
+    fn fields_values(self, fields_value: &mut [FieldValue]) {
+        fields_value[0] = FieldValue::Character(self.name);
+        fields_value[1] = FieldValue::Character(self.artist);
     }
 }
 
@@ -67,10 +86,12 @@ impl DBaseRecord for ArtistRecord {
 #[test]
 fn from_scratch() {
     let mut fst = dbase::Record::new();
-    fst.insert("Name".to_string(), dbase::FieldValue::Character("Fallujah".to_string()));
+    fst.insert("Name".to_string(), dbase::FieldValue::Character("The Flesh Prevails".to_string()));
+    fst.insert("Artist".to_string(), dbase::FieldValue::Character("Fallujah".to_string()));
 
     let mut scnd = dbase::Record::new();
-    scnd.insert("Name".to_string(), dbase::FieldValue::Character("Beyond Creation".to_string()));
+    scnd.insert("Name".to_string(), dbase::FieldValue::Character("Earthborn Evolution".to_string()));
+    scnd.insert("Artist".to_string(), dbase::FieldValue::Character("Beyond Creation".to_string()));
 
     let records = vec![fst, scnd];
 
@@ -80,11 +101,40 @@ fn from_scratch() {
     cursor.seek(SeekFrom::Start(0)).unwrap();
 
     let reader = dbase::Reader::new(cursor).unwrap();
-    let read_records = reader.read_as::<ArtistRecord>().unwrap();
+    let read_records = reader.read_as::<AlbumRecord>().unwrap();
 
     assert_eq!(read_records.len(), 2);
 
-    assert_eq!(read_records[0].name, "Fallujah");
-    assert_eq!(read_records[1].name, "Beyond Creation");
+    assert_eq!(read_records[0].artist, "Fallujah");
+    assert_eq!(read_records[1].artist, "Beyond Creation");
+
+    assert_eq!(read_records[0].name, "The Flesh Prevails");
+    assert_eq!(read_records[1].name, "Earthborn Evolution");
 }
+
+
+#[test]
+fn from_scratch2() {
+
+    let records = vec![
+        AlbumRecord {name: "The Flesh Prevails".to_string(), artist: "Fallujah".to_string()},
+        AlbumRecord {name: "Earthborn Evolution".to_string(), artist: "Beyond Creation".to_string()}
+    ];
+
+    let writer = dbase::Writer::new(Cursor::new(Vec::<u8>::new()));
+    let mut cursor = writer.write_records(records).unwrap();
+    cursor.seek(SeekFrom::Start(0)).unwrap();
+
+    let reader = dbase::Reader::new(cursor).unwrap();
+    let read_records = reader.read_as::<AlbumRecord>().unwrap();
+
+    assert_eq!(read_records.len(), 2);
+
+    assert_eq!(read_records[0].name, "The Flesh Prevails");
+    assert_eq!(read_records[0].artist, "Fallujah");
+    assert_eq!(read_records[1].name, "Earthborn Evolution");
+    assert_eq!(read_records[1].artist, "Beyond Creation");
+}
+
+
 

@@ -43,8 +43,7 @@
 extern crate byteorder;
 
 pub use reading::{read, Reader, Record, FieldValueReader};
-pub use record::field::FieldValue;
-pub use record::FieldFlags;
+pub use record::field::{FieldValue, FieldType, SizeableField};
 pub use writing::{write_to, write_to_path, Writer};
 
 mod header;
@@ -87,5 +86,14 @@ impl From<std::num::ParseIntError> for Error {
 }
 
 pub trait DBaseRecord {
-    fn from_field_reader<T: FieldValueReader>(r: &mut T) -> Result<Self, Error> where Self:Sized;
+    fn from_field_reader<T>(r: &mut T) -> Result<Self, Error>
+        where Self:Sized,
+              T: FieldValueReader;
+
+    fn fields_info() -> Vec<(String, FieldType)>;
+
+    fn fields_length(&self, fields_length: &mut [u8]);
+
+    fn fields_values(self, fields_value: &mut [FieldValue]);
 }
+
