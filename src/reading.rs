@@ -10,7 +10,8 @@ use byteorder::{ReadBytesExt};
 use header::Header;
 use record::{RecordFieldInfo};
 use record::field::FieldValue;
-use Error;
+use ::{Error, DBaseRecord};
+use std::convert::TryFrom;
 
 
 /// Value of the byte between the last RecordFieldInfo and the first record
@@ -28,6 +29,7 @@ pub struct Reader<T: Read> {
     header: Header,
     fields_info: Vec<RecordFieldInfo>,
     current_record: u32,
+    current_field: usize,
 }
 
 impl<T: Read> Reader<T> {
@@ -68,6 +70,7 @@ impl<T: Read> Reader<T> {
             header,
             fields_info,
             current_record: 0,
+            current_field: 0
         })
     }
 
@@ -95,6 +98,45 @@ impl<T: Read> Reader<T> {
         //let file_end = self.source.read_u16::<LittleEndian>()?;
         Ok(records)
     }
+
+    pub fn read_as<R: DBaseRecord>(mut self) -> Result<Vec<R>, Error> {
+        let mut records = Vec::<R>::with_capacity(self.header.num_records as usize);
+        for _ in 0..self.header.num_records{
+            records.push(R::from_field_reader(&mut self)?);
+            self.current_field = 0;
+        }
+        Ok(records)
+    }
+}
+
+
+impl<R: Read> FieldValueReader for Reader<R> {
+    fn read_next_value(&mut self) -> Option<Result<FieldValue, Error>> {
+        if self.current_record as usize >= self.fields_info.len() {
+            None
+        } else if self.current_field >= self.fields_info.len(){
+            None
+        }
+        else {
+            let (value, is_deletion_flag_field) =
+            {
+                let field_info = &self.fields_info[self.current_field];
+
+                self.current_field +=1;
+                (
+                    FieldValue::read_from(&mut self.source, field_info),
+                    field_info.name == "DeletionFlag"
+                )
+            };
+
+
+            if is_deletion_flag_field {
+                self.read_next_value()
+            } else {
+                Some(value)
+            }
+        }
+    }
 }
 
 impl Reader<BufReader<File>> {
@@ -112,6 +154,16 @@ impl Reader<BufReader<File>> {
         Reader::new(bufreader)
     }
 }
+
+
+
+pub trait FieldValueReader {
+    fn  read_next_value(&mut self) -> Option<Result<FieldValue, Error>>;
+}
+
+
+
+
 
 
 impl<T: Read> Iterator for Reader<T> {
@@ -150,6 +202,8 @@ pub fn read<P: AsRef<Path>>(path: P) -> Result<Vec<Record>, Error> {
     let reader = Reader::from_path(path)?;
     reader.read()
 }
+
+
 
 #[cfg(test)]
 mod test {

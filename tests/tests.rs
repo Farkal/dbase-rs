@@ -4,6 +4,7 @@ extern crate dbase;
 
 use std::collections::HashMap;
 use std::io::{Cursor, Seek, SeekFrom};
+use dbase::{DBaseRecord, FieldValue, Error, FieldValueReader};
 
 
 #[test]
@@ -35,6 +36,34 @@ fn test_read_write_simple_file() {
     assert_eq!(records[0], expected_fields);
 }
 
+
+struct ArtistRecord {
+    name: String,
+}
+
+
+impl DBaseRecord for ArtistRecord {
+    fn from_field_reader<T: FieldValueReader>(r: &mut T) -> Result<Self, Error> {
+        let name = match r.read_next_value() {
+            Some(Ok(FieldValue::Character(value))) => value,
+            Some(Ok(_)) => panic!("value mismatch"),
+            Some(Err(e)) => return Err(e),
+            None => panic!("not enough members")
+        };
+/*
+        let age = match r.read_next_value() {
+            Some(Ok(FieldValue::Numeric(value))) => value,
+            Some(Ok(_)) => panic!("value mismatch"),
+            Some(Err(e)) => return Err(e),
+            None => panic!("not enough members")
+        };*/
+
+
+        Ok(Self {name})
+    }
+}
+
+
 #[test]
 fn from_scratch() {
     let mut fst = dbase::Record::new();
@@ -51,17 +80,11 @@ fn from_scratch() {
     cursor.seek(SeekFrom::Start(0)).unwrap();
 
     let reader = dbase::Reader::new(cursor).unwrap();
-    let read_records = reader.read().unwrap();
+    let read_records = reader.read_as::<ArtistRecord>().unwrap();
 
     assert_eq!(read_records.len(), 2);
 
-    match read_records[0].get("Name").unwrap() {
-        dbase::FieldValue::Character(s) => assert_eq!(s, "Fallujah"),
-        _ => assert!(false)
-    }
-    match read_records[1].get("Name").unwrap() {
-        dbase::FieldValue::Character(s) => assert_eq!(s, "Beyond Creation"),
-        _ => assert!(false)
-    }
+    assert_eq!(read_records[0].name, "Fallujah");
+    assert_eq!(read_records[1].name, "Beyond Creation");
 }
 
