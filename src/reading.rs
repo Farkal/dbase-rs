@@ -1,18 +1,17 @@
 //! Module with the definition of fn's and struct's to read .dbf files
 
-use std::io::{Read, BufReader};
-use std::fs::File;
-use std::path::Path;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufReader, Read};
+use std::path::Path;
 
-use byteorder::{ReadBytesExt};
+use byteorder::ReadBytesExt;
 
 use header::Header;
-use record::{RecordFieldInfo};
 use record::field::FieldValue;
-use ::{Error, DBaseRecord};
+use record::RecordFieldInfo;
 use std::convert::TryFrom;
-
+use {DBaseRecord, Error};
 
 /// Value of the byte between the last RecordFieldInfo and the first record
 pub(crate) const TERMINATOR_VALUE: u8 = 0x0D;
@@ -51,7 +50,9 @@ impl<T: Read> Reader<T> {
     /// ```
     pub fn new(mut source: T) -> Result<Self, Error> {
         let header = Header::read_from(&mut source)?;
-        let num_fields = (header.offset_to_first_record as usize - Header::SIZE - std::mem::size_of::<u8>()) / RecordFieldInfo::SIZE;
+        let num_fields =
+            (header.offset_to_first_record as usize - Header::SIZE - std::mem::size_of::<u8>())
+                / RecordFieldInfo::SIZE;
 
         let mut fields_info = Vec::<RecordFieldInfo>::with_capacity(num_fields as usize + 1);
         fields_info.push(RecordFieldInfo::new_deletion_flag());
@@ -70,7 +71,7 @@ impl<T: Read> Reader<T> {
             header,
             fields_info,
             current_record: 0,
-            current_field: 0
+            current_field: 0,
         })
     }
 
@@ -101,7 +102,7 @@ impl<T: Read> Reader<T> {
 
     pub fn read_as<R: DBaseRecord>(mut self) -> Result<Vec<R>, Error> {
         let mut records = Vec::<R>::with_capacity(self.header.num_records as usize);
-        for _ in 0..self.header.num_records{
+        for _ in 0..self.header.num_records {
             records.push(R::from_field_reader(&mut self)?);
             self.current_field = 0;
         }
@@ -109,26 +110,22 @@ impl<T: Read> Reader<T> {
     }
 }
 
-
 impl<R: Read> FieldValueReader for Reader<R> {
     fn read_next_value(&mut self) -> Option<Result<FieldValue, Error>> {
         if self.current_record as usize >= self.fields_info.len() {
             None
-        } else if self.current_field >= self.fields_info.len(){
+        } else if self.current_field >= self.fields_info.len() {
             None
-        }
-        else {
-            let (value, is_deletion_flag_field) =
-            {
+        } else {
+            let (value, is_deletion_flag_field) = {
                 let field_info = &self.fields_info[self.current_field];
 
-                self.current_field +=1;
+                self.current_field += 1;
                 (
                     FieldValue::read_from(&mut self.source, field_info),
-                    field_info.name == "DeletionFlag"
+                    field_info.name == "DeletionFlag",
                 )
             };
-
 
             if is_deletion_flag_field {
                 self.read_next_value()
@@ -155,16 +152,9 @@ impl Reader<BufReader<File>> {
     }
 }
 
-
-
 pub trait FieldValueReader {
-    fn  read_next_value(&mut self) -> Option<Result<FieldValue, Error>>;
+    fn read_next_value(&mut self) -> Option<Result<FieldValue, Error>>;
 }
-
-
-
-
-
 
 impl<T: Read> Iterator for Reader<T> {
     type Item = Result<Record, Error>;
@@ -203,13 +193,11 @@ pub fn read<P: AsRef<Path>>(path: P) -> Result<Vec<Record>, Error> {
     reader.read()
 }
 
-
-
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::io::{Seek, SeekFrom};
     use std::fs::File;
+    use std::io::{Seek, SeekFrom};
 
     #[test]
     fn pos_after_reading() {
@@ -218,7 +206,8 @@ mod test {
         let pos_after_reading = reader.source.seek(SeekFrom::Current(0)).unwrap();
 
         // Do not count the the "DeletionFlag record info that is added
-        let mut expected_pos = Header::SIZE + ((reader.fields_info.len() - 1) * RecordFieldInfo::SIZE);
+        let mut expected_pos =
+            Header::SIZE + ((reader.fields_info.len() - 1) * RecordFieldInfo::SIZE);
         // Add the terminator
         expected_pos += std::mem::size_of::<u8>();
         assert_eq!(pos_after_reading, expected_pos as u64);

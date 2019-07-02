@@ -3,16 +3,15 @@ use std::io::{Read, Write};
 use byteorder::{ReadBytesExt, WriteBytesExt};
 
 pub mod field;
-use record::field::{FieldType};
+use record::field::FieldType;
 use Error;
-
 
 #[derive(Copy, Clone)]
 pub struct FieldFlags(u8);
 
 impl FieldFlags {
     pub fn new() -> Self {
-        Self{0: 0}
+        Self { 0: 0 }
     }
 
     pub fn system_column(self) -> bool {
@@ -46,7 +45,6 @@ pub struct RecordFieldInfo {
     pub autoincrement_step: u8,
 }
 
-
 impl RecordFieldInfo {
     pub(crate) const SIZE: usize = 32;
 
@@ -78,7 +76,9 @@ impl RecordFieldInfo {
         let record_length = source.read_u8()?;
         let num_decimal_places = source.read_u8()?;
 
-        let flags = FieldFlags{0: source.read_u8()?};
+        let flags = FieldFlags {
+            0: source.read_u8()?,
+        };
 
         let mut autoincrement_next_val = [0u8; 5];
 
@@ -88,10 +88,12 @@ impl RecordFieldInfo {
         let mut _reserved = [0u8; 7];
         source.read_exact(&mut _reserved)?;
 
-        let s = String::from_utf8_lossy(&name).trim_matches(|c| c == '\u{0}').to_owned();
+        let s = String::from_utf8_lossy(&name)
+            .trim_matches(|c| c == '\u{0}')
+            .to_owned();
         let field_type = FieldType::try_from(field_type as char)?;
 
-        Ok(Self{
+        Ok(Self {
             name: s,
             field_type,
             displacement_field,
@@ -111,7 +113,7 @@ impl RecordFieldInfo {
         dest.write_all(&self.name.as_bytes()[0..num_bytes])?;
         let mut name_bytes = [0u8; 11];
         name_bytes[10] = '\0' as u8;
-        dest.write_all(&name_bytes[0..11-num_bytes])?;
+        dest.write_all(&name_bytes[0..11 - num_bytes])?;
 
         dest.write_u8(self.field_type as u8)?;
 
@@ -129,29 +131,26 @@ impl RecordFieldInfo {
     }
 
     pub fn new_deletion_flag() -> Self {
-        Self{
+        Self {
             name: "DeletionFlag".to_owned(),
             field_type: FieldType::Character,
             displacement_field: [0u8; 4],
             field_length: 1,
             num_decimal_places: 0,
-            flags: FieldFlags{0: 0u8},
+            flags: FieldFlags { 0: 0u8 },
             autoincrement_next_val: [0u8; 5],
             autoincrement_step: 0u8,
-
         }
     }
 }
-
-
 
 #[cfg(test)]
 mod test {
     use super::*;
     use header::Header;
 
-    use std::io::{Seek, SeekFrom, Cursor};
     use std::fs::File;
+    use std::io::{Cursor, Seek, SeekFrom};
 
     #[test]
     fn test_record_info_read_writing() {
@@ -164,7 +163,6 @@ mod test {
 
         let records_info = RecordFieldInfo::read_from(&mut cursor).unwrap();
 
-
         let mut out = Cursor::new(Vec::<u8>::with_capacity(RecordFieldInfo::SIZE));
         records_info.write_to(&mut out).unwrap();
 
@@ -173,4 +171,3 @@ mod test {
         assert_eq!(bytes_written, record_info_bytes);
     }
 }
-

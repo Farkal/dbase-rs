@@ -2,8 +2,8 @@ use std::io::{Read, Write};
 
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use Error;
 use record::field::Date;
+use Error;
 
 pub struct FileType(u8);
 
@@ -33,7 +33,6 @@ impl TableFlags {
     }
 }
 
-
 pub struct Header {
     pub file_type: FileType,
     pub last_update: Date,
@@ -46,12 +45,15 @@ pub struct Header {
     pub code_page_mark: u8, //FIXME is the "language driver id" instead ?
 }
 
-
 impl Header {
     pub(crate) fn new(num_records: u32, offset: u16, size_of_records: u16) -> Self {
         Self {
             file_type: FileType { 0: 0x03 },
-            last_update: Date { year: 1990, month: 12, day: 25 }, //FIXME use chrono crate
+            last_update: Date {
+                year: 1990,
+                month: 12,
+                day: 25,
+            }, //FIXME use chrono crate
             num_records,
             offset_to_first_record: offset,
             size_of_record: size_of_records,
@@ -65,7 +67,9 @@ impl Header {
     pub(crate) const SIZE: usize = 32;
 
     pub(crate) fn read_from<T: Read>(source: &mut T) -> Result<Self, std::io::Error> {
-        let file_type = FileType { 0: source.read_u8()? };
+        let file_type = FileType {
+            0: source.read_u8()?,
+        };
 
         let mut date = [0u8; 3];
         source.read_exact(&mut date)?;
@@ -83,7 +87,9 @@ impl Header {
         let mut _reserved = [0u8; 12];
         source.read_exact(&mut _reserved)?;
 
-        let table_flags = TableFlags { 0: source.read_u8()? };
+        let table_flags = TableFlags {
+            0: source.read_u8()?,
+        };
 
         let code_page_mark = source.read_u8()?;
 
@@ -113,7 +119,11 @@ impl Header {
         // Reserved
         dest.write_u16::<LittleEndian>(0)?;
 
-        let byte_value = if self.is_transaction_incomplete { 1u8 } else { 0u8 };
+        let byte_value = if self.is_transaction_incomplete {
+            1u8
+        } else {
+            0u8
+        };
         dest.write_u8(byte_value)?;
         dest.write_u8(self.encryption_flag)?;
 
@@ -129,12 +139,11 @@ impl Header {
     }
 }
 
-
 #[cfg(test)]
 mod test {
     use std::fs::File;
-    use std::io::{Seek, SeekFrom};
     use std::io::Cursor;
+    use std::io::{Seek, SeekFrom};
 
     use super::*;
 
@@ -157,7 +166,6 @@ mod test {
         assert_eq!(pos_after_writing, Header::SIZE as u64);
     }
 
-
     #[test]
     fn read_write_header() {
         let mut file = File::open("tests/data/line.dbf").unwrap();
@@ -177,7 +185,3 @@ mod test {
         assert_eq!(hdr_bytes_written, hdr_bytes);
     }
 }
-
-
-
-

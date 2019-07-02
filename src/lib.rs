@@ -1,5 +1,5 @@
 //! dbase is rust library meant to read and write
-//! 
+//!
 //! # Reading
 //!
 //! To Read the whole file at once you should use the [read](fn.read.html) function.
@@ -42,13 +42,13 @@
 
 extern crate byteorder;
 
-pub use reading::{read, Reader, Record, FieldValueReader};
-pub use record::field::{FieldValue, FieldType, SizeableField};
+pub use reading::{read, FieldValueReader, Reader, Record};
+pub use record::field::{Date, FieldType, FieldValue, SizeableField};
 pub use writing::{write_to, write_to_path, Writer};
 
 mod header;
-mod record;
 mod reading;
+mod record;
 mod writing;
 
 /// Errors that may happen when reading a .dbf
@@ -65,6 +65,7 @@ pub enum Error {
     InvalidDate,
     FieldLengthTooLong,
     FieldNameTooLong,
+    FieldTypeNotAsExpected(FieldType)
 }
 
 impl From<std::io::Error> for Error {
@@ -87,8 +88,9 @@ impl From<std::num::ParseIntError> for Error {
 
 pub trait DBaseRecord {
     fn from_field_reader<T>(r: &mut T) -> Result<Self, Error>
-        where Self:Sized,
-              T: FieldValueReader;
+    where
+        Self: Sized,
+        T: FieldValueReader;
 
     fn fields_info() -> Vec<(String, FieldType)>;
 
@@ -97,3 +99,14 @@ pub trait DBaseRecord {
     fn fields_values(self, fields_value: &mut [FieldValue]);
 }
 
+#[macro_export]
+macro_rules! extract_field_value {
+    ($field_value_option:expr, FieldValue::$expected_variant:ident) => {
+        match $field_value_option {
+            Some(Ok(FieldValue::$expected_variant(value))) => value,
+            Some(Ok(v)) => return Err(Error::FieldTypeNotAsExpected(v.field_type())),
+            Some(Err(e)) => return Err(e),
+            None => panic!("not enough members"),
+        }
+    };
+}
